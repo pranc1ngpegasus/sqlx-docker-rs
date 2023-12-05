@@ -1,0 +1,20 @@
+[package]
+name = "sqlx-docker-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+sqlx = { workspace = true, features = [
+  "runtime-tokio",
+  "postgres",
+  "tls-rustls",
+] }
+
+[workspace]
+members = []
+resolver = "2"
+
+[workspace.dependencies]
+tokio = "1.31.0"
+sqlx = "0.7.2"
