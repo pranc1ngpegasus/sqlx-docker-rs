@@ -1,0 +1,65 @@
+on:
+  push:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-build
+  cancel-in-progress: true
+env:
+  DATABASE_USER: "postgres"
+  DATABASE_NAME: "postgres"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: ${{ env.DATABASE_NAME }}
+          POSTGRES_USER: ${{ env.DATABASE_USER }}
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-unknown-linux-musl
+      - uses: goto-bus-stop/setup-zig@v2
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/cache-cargo-install-action@v1
+        with:
+          tool: sqlx-cli
+      - run: |
+          cargo sqlx migrate run
+          cargo sqlx prepare --workspace
+        env:
+          DATABASE_URL: postgres://${{ env.DATABASE_USER }}@localhost:5432/${{ env.DATABASE_NAME }}?sslmode=disable
+      - uses: taiki-e/cache-cargo-install-action@v1
+        with:
+          tool: cargo-zigbuild
+      - run: |
+          cargo zigbuild --release --target x86_64-unknown-linux-musl
+          mkdir -p tmp
+          mv target/x86_64-unknown-linux-musl/release/sqlx-docker-rs tmp/sqlx-docker-rs
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/metadata-action@v4
+        id: meta
+        with:
+          images: ghcr.io/pranc1ngpegasus/sqlx-docker-rs
+          tags: |
+            type=sha,format=short,prefix=,priority=100
+            type=raw,value=latest,priority=200
+      - uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          no-cache: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
