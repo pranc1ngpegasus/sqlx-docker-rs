@@ -1,0 +1,48 @@
+on:
+  push:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-build
+  cancel-in-progress: true
+env:
+  DATABASE_USER: "postgres"
+  DATABASE_NAME: "postgres"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: ${{ env.DATABASE_NAME }}
+          POSTGRES_USER: ${{ env.DATABASE_USER }}
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v2
+      - uses: docker/metadata-action@v4
+        id: meta
+        with:
+          images: ghcr.io/pranc1ngpegasus/sqlx-docker-rs
+          tags: |
+            type=sha,format=short,prefix=
+            type=raw,value=latest
+            type=ref,event=branch
+            type=ref,event=pr
+      - uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
